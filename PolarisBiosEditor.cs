@@ -10,15 +10,15 @@ using System.Linq;
 using System.ComponentModel;
 using System.Net;
 
-namespace PolarisBiosEditor
+namespace S7100XBiosEditor
 {
-    public partial class PolarisBiosEditor : Form
+    public partial class S7100XBiosEditor : Form
     {
 
         /* DATA */
 
         string version = "1.7.6";
-        string programTitle = "PolarisBiosEditor";
+        string programTitle = "S7100XBiosEditor";
 
 
         string[] manufacturers = new string[] {
@@ -69,7 +69,10 @@ namespace PolarisBiosEditor
          "777000000000000022CC1C00AD615C42F0590F15300D9708006007000B031420FA8900A00300000011112F3FBB354019"
         };
 
-    Dictionary<string, string> rc = new Dictionary<string, string>();
+        Dictionary<string, string> rc = new Dictionary<string, string>();
+
+        // Offset of a Uin16 where the base of the tables are located
+        const int ATOM_ROM_TABLE_PTR = 0x48;
 
         [StructLayout(LayoutKind.Explicit, Size = 96, CharSet = CharSet.Ansi)]
         public class VRAM_TIMING_RX
@@ -85,10 +88,12 @@ namespace PolarisBiosEditor
         Boolean hasInternetAccess = false;
 
         int atom_rom_checksum_offset = 0x21;
-        int atom_rom_header_ptr = 0x48;
         int atom_rom_header_offset;
         ATOM_ROM_HEADER atom_rom_header;
         ATOM_DATA_TABLES atom_data_table;
+
+        int atom_firmware_info_offset;
+        ATOM_FIRMWARE_INFO atom_firmware_info;
 
         int atom_powerplay_offset;
         ATOM_POWERPLAY_TABLE atom_powerplay_table;
@@ -198,6 +203,43 @@ namespace PolarisBiosEditor
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        struct ATOM_FIRMWARE_INFO
+        {
+            ATOM_COMMON_TABLE_HEADER sHeader;
+            public UInt32 ulFirmwareRevision;
+            public UInt32 ulDefaultEngineClock;       //In 10Khz unit
+            public UInt32 ulDefaultMemoryClock;       //In 10Khz unit
+            public UInt32 ulDriverTargetEngineClock;  //In 10Khz unit
+            public UInt32 ulDriverTargetMemoryClock;  //In 10Khz unit
+            public UInt32 ulMaxEngineClockPLL_Output; //In 10Khz unit
+            public UInt32 ulMaxMemoryClockPLL_Output; //In 10Khz unit
+            public UInt32 ulMaxPixelClockPLL_Output;  //In 10Khz unit
+            public UInt32 ulASICMaxEngineClock;       //In 10Khz unit
+            public UInt32 ulASICMaxMemoryClock;       //In 10Khz unit
+            public Byte ucASICMaxTemperature;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public Char[] ucPadding;               //Don't use them
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public UInt32[] aulReservedForBIOS;      //Don't use them
+            public UInt16 usMinEngineClockPLL_Input;  //In 10Khz unit
+            public UInt16 usMaxEngineClockPLL_Input;  //In 10Khz unit
+            public UInt16 usMinEngineClockPLL_Output; //In 10Khz unit
+            public UInt16 usMinMemoryClockPLL_Input;  //In 10Khz unit
+            public UInt16 usMaxMemoryClockPLL_Input;  //In 10Khz unit
+            public UInt16 usMinMemoryClockPLL_Output; //In 10Khz unit
+            public UInt16 usMaxPixelClock;            //In 10Khz unit, Max  Pclk
+            public UInt16 usMinPixelClockPLL_Input;   //In 10Khz unit
+            public UInt16 usMaxPixelClockPLL_Input;   //In 10Khz unit
+            public UInt16 usMinPixelClockPLL_Output;  //In 10Khz unit, the definitions above can't change!!!
+            public UInt16 usFirmwareCapability;
+            public UInt16 usReferenceClock;           //In 10Khz unit
+            public UInt16 usPM_RTS_Location;          //RTS PM4 starting location in ROM in 1Kb unit
+            public Byte ucPM_RTS_StreamSize;        //RTS PM4 packets in Kb unit
+            public Byte ucDesign_ID;                //Indicate what is the board design
+            public Byte ucMemoryModule_ID;          //Indicate what is the board design
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         unsafe struct ATOM_POWERPLAY_TABLE
         {
             public ATOM_COMMON_TABLE_HEADER sHeader;
@@ -258,8 +300,7 @@ namespace PolarisBiosEditor
             public UInt16 usEdcCurrent;
             public Byte ucReliabilityTemperature;
             public Byte ucCKSVOffsetandDisable;
-            public UInt32 ulSclkOffset;
-            // Polaris Only, remove for compatibility with Fiji
+            // public UInt32 ulSclkOffset; // Polaris Only, remove for compatibility with Fiji TODO:
         };
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -410,7 +451,7 @@ namespace PolarisBiosEditor
         [STAThread]
         static void Main(string[] args)
         {
-            PolarisBiosEditor pbe = new PolarisBiosEditor();
+            S7100XBiosEditor pbe = new S7100XBiosEditor();
             Application.Run(pbe);
         }
 
@@ -481,46 +522,10 @@ namespace PolarisBiosEditor
             }
         }
 
-        public PolarisBiosEditor()
+        public S7100XBiosEditor()
         {
             InitializeComponent();
-            this.Text = this.programTitle + " " + this.version + " " + "Tweaked By Mattthev";
-
-            try
-            {
-
-                WebClient myWebClient = new WebClient();
-                Stream myStream = myWebClient.OpenRead("https://raw.githubusercontent.com/IndeedMiners/PolarisBiosEditor/master/version");
-                StreamReader sr = new StreamReader(myStream);
-                string newVersion = sr.ReadToEnd().Trim();
-                if (!newVersion.Equals(version)) {
-                    MessageBox.Show("There is a new version available! " + version + " -> " + newVersion);
-                }
-                myStream.Close();
-
-                myStream = myWebClient.OpenRead("https://raw.githubusercontent.com/IndeedMiners/PolarisBiosEditor/master/notice");
-                sr = new StreamReader(myStream);
-                string notice = sr.ReadToEnd().Trim();
-
-                MessageBoxButtons buttons = MessageBoxButtons.YesNo;
-                DialogResult result;
-
-                result = MessageBox.Show(notice + "\n\nClick Yes button to copy to clipboard", "A message from the developer", buttons);
-
-                if (result == System.Windows.Forms.DialogResult.OK)
-                {
-
-                    Clipboard.SetText(notice);
-
-                }
-
-                myStream.Close();
-
-                hasInternetAccess = true;
-
-            } catch (System.Net.WebException) {
-                this.Text += " (offline mode)";
-            }
+            this.Text = this.programTitle + " " + this.version;
 
             rc.Add("MT51J256M3", "MICRON");
             rc.Add("EDW4032BAB", "ELPIDA");
@@ -543,6 +548,7 @@ namespace PolarisBiosEditor
             boxGPU.Enabled = false;
             boxMEM.Enabled = false;
             boxVRAM.Enabled = false;
+            boxFIRMWARE.Enabled = false;
 
             tableVRAM.MouseClick += new MouseEventHandler(listView_ChangeSelection);
             tableVRAM_TIMING.MouseClick += new MouseEventHandler(listView_ChangeSelection);
@@ -552,6 +558,7 @@ namespace PolarisBiosEditor
             tablePOWERTUNE.MouseClick += new MouseEventHandler(listView_ChangeSelection);
             tablePOWERPLAY.MouseClick += new MouseEventHandler(listView_ChangeSelection);
             tableROM.MouseClick += new MouseEventHandler(listView_ChangeSelection);
+            tableFIRMWARE.MouseClick += new MouseEventHandler(listView_ChangeSelection);
 
             //MessageBox.Show("Modifying your BIOS is dangerous and could cause irreversible damage to your GPU.\nUsing a modified BIOS may void your warranty.\nThe author will not be held accountable for your actions.", "DISCLAIMER", MessageBoxButtons.OK, MessageBoxImage.Warning);
         }
@@ -592,13 +599,14 @@ namespace PolarisBiosEditor
                 tableFAN.Items.Clear();
                 tableGPU.Items.Clear();
                 tableMEMORY.Items.Clear();
+                tableFIRMWARE.Items.Clear();
                 tableVRAM.Items.Clear();
                 tableVRAM_TIMING.Items.Clear();
 
-                this.Text = this.programTitle + " " + this.version + " tweaked by Mattthev " + " - " + "[" + openFileDialog.SafeFileName + "]";
+                this.Text = this.programTitle + " " + this.version + " " + " - " + "[" + openFileDialog.SafeFileName + "]";
 
                 System.IO.Stream fileStream = openFileDialog.OpenFile();
-                if ((fileStream.Length != 524288) && (fileStream.Length != 524288 / 2))
+                if ((fileStream.Length != 131072))
                 {
                     MessageBox.Show("This BIOS is non standard size.\nFlashing this BIOS may corrupt your graphics card.", "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
@@ -606,7 +614,7 @@ namespace PolarisBiosEditor
                 {
                     buffer = br.ReadBytes((int)fileStream.Length);
 
-                    atom_rom_header_offset = getValueAtPosition(16, atom_rom_header_ptr);
+                    atom_rom_header_offset = getValueAtPosition(16, ATOM_ROM_TABLE_PTR);
                     atom_rom_header = fromBytes<ATOM_ROM_HEADER>(buffer.Skip(atom_rom_header_offset).ToArray());
                     deviceID = atom_rom_header.usDeviceID.ToString("X");
                     fixChecksum(false);
@@ -624,6 +632,7 @@ namespace PolarisBiosEditor
                     }
                     if (msgSuported == DialogResult.Yes)
                     {
+                        // Get device name
                         StringBuilder sb = new StringBuilder();
 
                         Int32 ptr = atom_rom_header.usBIOS_BootupMessageOffset+2;
@@ -646,6 +655,10 @@ namespace PolarisBiosEditor
                         txtBIOSBootupMessage.MaxLength = BIOS_BootupMessage.Length;
 
                         atom_data_table = fromBytes<ATOM_DATA_TABLES>(buffer.Skip(atom_rom_header.usMasterDataTableOffset).ToArray());
+
+                        atom_firmware_info_offset = atom_data_table.FirmwareInfo;
+                        atom_firmware_info = fromBytes<ATOM_FIRMWARE_INFO>(buffer.Skip(atom_firmware_info_offset).ToArray());
+
                         atom_powerplay_offset = atom_data_table.PowerPlayInfo;
                         atom_powerplay_table = fromBytes<ATOM_POWERPLAY_TABLE>(buffer.Skip(atom_powerplay_offset).ToArray());
 
@@ -673,7 +686,7 @@ namespace PolarisBiosEditor
 
                         atom_vddc_table_offset = atom_data_table.PowerPlayInfo + atom_powerplay_table.usVddcLookupTableOffset;
                         atom_vddc_table = fromBytes<ATOM_VOLTAGE_TABLE>(buffer.Skip(atom_vddc_table_offset).ToArray());
-                        atom_vddc_entries = new ATOM_VOLTAGE_ENTRY[atom_vddc_table.ucNumEntries];
+                        atom_vddc_entries = new ATOM_VOLTAGE_ENTRY[atom_vddc_table.ucNumEntries+1];
                         for (var i = 0; i < atom_vddc_table.ucNumEntries; i++)
                         {
                             atom_vddc_entries[i] = fromBytes<ATOM_VOLTAGE_ENTRY>(buffer.Skip(atom_vddc_table_offset + Marshal.SizeOf(typeof(ATOM_VOLTAGE_TABLE)) + Marshal.SizeOf(typeof(ATOM_VOLTAGE_ENTRY)) * i).ToArray());
@@ -882,6 +895,49 @@ namespace PolarisBiosEditor
                             ));
                         }
 
+                        tableFIRMWARE.Items.Clear();
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "Default Engine Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulDefaultEngineClock)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "Default Memory Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulDefaultMemoryClock)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "Driver Engine Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulDriverTargetEngineClock)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "Driver Memory Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulDriverTargetMemoryClock)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "Max Engine Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulMaxEngineClockPLL_Output)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "Max Memory Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulMaxMemoryClockPLL_Output)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "ASIC Max Engine Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulASICMaxEngineClock)
+                        }
+                        ));
+                        tableFIRMWARE.Items.Add(new ListViewItem(new string[] {
+                            "ASIC Max Memory Clk. (x10KHz)",
+                            Convert.ToString (atom_firmware_info.ulASICMaxMemoryClock)
+                        }
+                        ));
+
+
                         listVRAM.Items.Clear();
                         for (var i = 0; i < atom_vram_info.ucNumOfVRAMModule; i++)
                         {
@@ -924,6 +980,7 @@ namespace PolarisBiosEditor
                         boxGPU.Enabled = true;
                         boxMEM.Enabled = true;
                         boxVRAM.Enabled = true;
+                        boxFIRMWARE.Enabled = true;
                     }
                     fileStream.Close();
                 }
@@ -951,6 +1008,10 @@ namespace PolarisBiosEditor
 
             tableVRAM_TIMING.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
             tableVRAM_TIMING.AutoResizeColumns(ColumnHeaderAutoResizeStyle.HeaderSize);
+
+            tableFIRMWARE.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
+            tableFIRMWARE.AutoResizeColumns(ColumnHeaderAutoResizeStyle.HeaderSize);
+
         }
 
         public Int32 getValueAtPosition(int bits, int position, bool isFrequency = false)
@@ -1067,6 +1128,48 @@ namespace PolarisBiosEditor
                         atom_rom_header.uaFirmWareSignature = value.ToCharArray();
                     }
                 }
+
+                for (var i = 0; i < tableFIRMWARE.Items.Count; i++)
+                {
+                    ListViewItem container = tableFIRMWARE.Items[i];
+                    var name = container.Text;
+                    var value = container.SubItems[1].Text;
+                    var num = (int)int32.ConvertFromString(value);
+
+                    if (name == "Default Engine Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulDefaultEngineClock = (UInt32)(num);
+                    }
+                    else if (name == "Default Memory Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulDefaultMemoryClock = (UInt32)(num);
+                    }
+                    else if (name == "Driver Engine Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulDriverTargetEngineClock = (UInt32)num;
+                    }
+                    else if (name == "Driver Memory Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulDriverTargetMemoryClock = (UInt32)num;
+                    }
+                    else if (name == "Max Engine Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulMaxEngineClockPLL_Output = (UInt32)num;
+                    }
+                    else if (name == "Max Memory Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulMaxMemoryClockPLL_Output = (UInt32)num;
+                    }
+                    else if (name == "ASIC Max Engine Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulASICMaxEngineClock = (UInt32)num;
+                    }
+                    else if (name == "ASIC Max Memory Clk. (x10KHz)")
+                    {
+                        atom_firmware_info.ulASICMaxMemoryClock = (UInt32)num;
+                    }
+                }
+
 
                 for (var i = 0; i < tablePOWERPLAY.Items.Count; i++)
                 {
@@ -1241,6 +1344,7 @@ namespace PolarisBiosEditor
                 }
 
                 setBytesAtPosition(buffer, atom_rom_header_offset, getBytes(atom_rom_header));
+                setBytesAtPosition(buffer, atom_firmware_info_offset, getBytes(atom_firmware_info));
                 setBytesAtPosition(buffer, atom_powerplay_offset, getBytes(atom_powerplay_table));
                 setBytesAtPosition(buffer, atom_powertune_offset, getBytes(atom_powertune_table));
                 setBytesAtPosition(buffer, atom_fan_offset, getBytes(atom_fan_table));
@@ -1536,12 +1640,12 @@ namespace PolarisBiosEditor
             {
                 if (MessageBox.Show("Do you want faster timing?", "Important Question", MessageBoxButtons.YesNo) == DialogResult.Yes)
                 {
-                    int num = (int)MessageBox.Show("Samsung Memory found at index #" + (object)samsung_2_index + ", now applying faster timings to 1750+ strap(s)");
+                    int num = (int)MessageBox.Show("Samsung Memory found at index #" + (object)samsung_index + ", now applying faster timings to 1750+ strap(s)");
                     this.apply_timings1(samsung_2_index, 10);
                 }
                 else
                 {
-                    int num = (int)MessageBox.Show("Samsung Memory found at index #" + (object)samsung_2_index + ", now applying slower timings to 1750+ strap(s)");
+                    int num = (int)MessageBox.Show("Samsung Memory found at index #" + (object)samsung_index + ", now applying slower timings to 1750+ strap(s)");
                     this.apply_timings1(samsung_2_index, 11);
                 }
             }
@@ -1616,25 +1720,16 @@ namespace PolarisBiosEditor
                 }
             }
 
-            if (samsung_index == -1 && samsung_2_index == -1 && hynix_2_index == -1 && hynix_3_index == -1 && hynix_1_index == -1 && hynix_4_index == -1 && elpida_index == -1 && micron_index == -1)
+            if (samsung_index == -1 && samsung_2_index == -1 && hynix_2_index == -1 && hynix_3_index == -1 && hynix_1_index == -1 && elpida_index == -1 && micron_index == -1)
             {
-                MessageBox.Show("Sorry, no supported memory found. If you think this is an error, please file a bugreport @ https://github.com/IndeedMiners/PolarisBiosEditor/issues");
+                MessageBox.Show("Sorry, no supported memory found. If you think this is an error, please file a bugreport @ https://github.com/IndeedMiners/S7100XBiosEditor/issues");
             }
             this.tablePOWERPLAY.Items[1].SubItems[1].Text = "2300";
-            if (MessageBox.Show("Bios is ready for flash\nSupport developer and buy Pro version on https://mining-bios.eu/", "PBE 3 PRO", MessageBoxButtons.YesNo, MessageBoxIcon.Asterisk) == DialogResult.Yes)
-            {
-                System.Diagnostics.Process.Start("https://bit.ly/mining-bios-eu");
-            }
         }
 
         private void editSubItem2_TextChanged(object sender, EventArgs e)
         {
 
-        }
-
-        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
-        {
-            System.Diagnostics.Process.Start("https://bit.ly/mining-bios-eu");
         }
     }
 }

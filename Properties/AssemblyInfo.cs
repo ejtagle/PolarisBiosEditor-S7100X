@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("PolarisBiosEditor")]
+[assembly: AssemblyTitle("S7100XBiosEditor")]
 [assembly: AssemblyDescription("PBE")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("https://mining-bios.eu")]
-[assembly: AssemblyProduct("PolarisBiosEditor")]
+[assembly: AssemblyProduct("S7100XBiosEditor")]
 [assembly: AssemblyCopyright("Mattthev")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

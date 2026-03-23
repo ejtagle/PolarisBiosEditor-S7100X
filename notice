@@ -1,21 +1,3 @@
--------------------------------------------------------------------------------
-                                       MINING-BIOS.EU
--------------------------------------------------------------------------------
-I WANTED TO RELEASE THE LAST FAREWELL UPDATE OF PBE
-BUT INSTEAD OF THAT I WILL JUST THANK YOU HERE FOR ALL OF YOUR SUPPORT!
-IT WAS ONE HELL OF A RIDE!
-HOPE YOU ENJOY THE EASE OF USING PBE AND GOT NICE MINING HASHRATE BOOST!
-IF YOU STILL DON'T HAVE PBE PRO
-OR YOU JUST WANT SUPPORT OUR WORK THAT WE DID WITH FREE PBE
-USE SPECIAL 80% DISCOUNT CODE: >> PBE80 <<
-
-GET IT ON: mining-bios.eu
-
-BYE GUYS! :)
--------------------------------------------------------------------------------
-New Wiki with PBE FAQ and tips!
-https://github.com/IndeedMiners/PolarisBiosEditor/wiki
--------------------------------------------------------------------------------
-If you find an error or missing a feature, feel free
-to create an issue at:
-https://github.com/IndeedMiners/PolarisBiosEditor/issues
+This project is an AMD FirePro (S7100x) BIOS Editor. It was based on the
+Polaris Bios editor written by MINING-BIOS.EU, but will now ONLY support
+the AMD FirePro S7100x BIOS.

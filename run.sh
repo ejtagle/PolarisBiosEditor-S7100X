@@ -1,2 +1,2 @@
 #!/bin/bash
-mono PolarisBiosEditor.exe
+mono S7100XBiosEditor.exe
